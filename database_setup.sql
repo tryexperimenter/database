@@ -93,39 +93,6 @@ FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
 
-/***
-Table: users__experiment_groups
-
-Purpose: Track which experiment groups a user is assigned to so that we know which sub_groups to assign to them each week. 
-
-Examples: Tristan <> Mini Experiments
-***/
-
-CREATE TABLE users__experiment_groups(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
-    user_id UUID NOT NULL,
-    experiment_group_id bigint NOT NULL,
-);
-
---Each experiment group has to be unique
-CREATE UNIQUE INDEX UQ_users__experiment_groups
-	ON users__experiment_groups (user_id, experiment_group_id);
-
---Restrict values for status
-ALTER TABLE users__experiment_groups
-    ADD CONSTRAINT check_users__experiment_groups__status 
-    CHECK (status IN ('active', 'inactive'));
-
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__users__experiment_groups
-BEFORE UPDATE ON users__experiment_groups
-FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
-
-
 
 /***
 Table: experiment_sub_groups
@@ -163,6 +130,41 @@ ALTER TABLE experiment_sub_groups
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__experiment_sub_groups
 BEFORE UPDATE ON experiment_sub_groups
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_updated_time();
+
+
+/***
+Table: experiment_sub_group_actions
+
+Purpose: Store actions to take to communicate experiments to users. 
+
+Examples: Send initial message to user about their Week 1 experiments on Monday at 9 am ET. 
+***/
+
+CREATE TABLE experiment_sub_group_actions(
+	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    user_id UUID NOT NULL,
+    experiment_sub_group_id BIGINT NOT NULL,
+    action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
+    action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action
+    action_status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
+);
+
+--Each user should only get one action of a given type for a given experiment_sub_group
+CREATE UNIQUE INDEX UQ_experiment_sub_group_actions
+	ON experiment_sub_group_actions (user_id, experiment_sub_group_id, action_type);
+
+--Restrict values for status
+ALTER TABLE experiment_sub_group_actions
+    ADD CONSTRAINT check_experiment_sub_group_actions__action_status
+    CHECK (status IN ('pending', 'completed'));
+
+--Automatically update updated_time.
+CREATE TRIGGER set_updated_time__experiment_sub_group_actions
+BEFORE UPDATE ON experiment_sub_group_actions
 FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
