@@ -180,7 +180,7 @@ EXECUTE PROCEDURE trigger_set_updated_time();
 /***
 Table: experiment_sub_group_assignments
 
-Purpose: Store which experiment_sub_groups have been assigned to each user and which actions to take to communicate to users. 
+Purpose: Store which experiment_sub_groups have been assigned to each user and which actions to take to communicate to users. We also use this table to know what experiments to display in the Experimenter Log.
 
 Examples: Send initial message to user about their Week 1 experiments on Monday at 9 am ET. 
 ***/
