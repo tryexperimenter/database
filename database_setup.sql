@@ -368,13 +368,18 @@ Examples: What do you want to do differently in the future?; What did you learn 
 ***/
 
 CREATE TABLE observations(
-	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
+	id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     observation_prompt_id VARCHAR(20) NOT NULL,
-    observation VARCHAR NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active', -- in case we want to allow users to delete their observations
+    observation VARCHAR NOT NULL
 );
+
+--Each user / observation prompt can only have one active observation
+CREATE UNIQUE INDEX UQ_observations__user_prompt
+	ON observations (user_id, observation_prompt_id) WHERE status = 'active';
 
 --Each observation has to be associated with an observation_prompt
 ALTER TABLE observations
@@ -387,6 +392,11 @@ ALTER TABLE observations
     ADD CONSTRAINT fk_observations__users
     FOREIGN KEY(user_id)
     REFERENCES users(id);
+
+--Restrict values for status
+ALTER TABLE observations
+    ADD CONSTRAINT check_observations__status 
+    CHECK (status IN ('active', 'inactive'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__observations
