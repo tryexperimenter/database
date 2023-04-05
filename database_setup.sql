@@ -1,11 +1,20 @@
-/*Allow for UUID as Primary Key
-
-While it could be overkill for non-sensitive tables, we’re going to default to using a Universally Unique ID as our primary keys. Some background info is:
+/*Use UUID for sensitive tables.
 
 https://arctype.com/blog/postgres-uuid/
 https://www.postgresql.org/docs/current/uuid-ossp.html 
 */
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+/*Use custom_id for non-sensitive tables.
+https://stackoverflow.com/questions/41970461/how-to-generate-a-random-unique-alphanumeric-id-of-length-n-in-postgres-9-6*/
+
+CREATE OR REPLACE FUNCTION custom_id(size INT) RETURNS TEXT AS $$
+DECLARE
+  output TEXT := LEFT(md5(random()::text),size);
+BEGIN
+  RETURN output;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 /*Validate email addresses.
 
@@ -15,6 +24,22 @@ CREATE EXTENSION citext;
 CREATE DOMAIN email AS citext
   CHECK ( value ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' );
 
+/*Validate timezones.
+https://justatheory.com/2007/11/postgres-timezone-validation/
+*/
+CREATE OR REPLACE FUNCTION is_timezone( tz TEXT ) RETURNS BOOLEAN as $$
+DECLARE
+    date TIMESTAMPTZ;
+BEGIN
+    date := now() AT TIME ZONE tz;
+    RETURN TRUE;
+EXCEPTION WHEN OTHERS THEN
+    RETURN FALSE;
+END;
+$$ language plpgsql STABLE;
+
+CREATE DOMAIN timezone AS TEXT
+CHECK ( is_timezone( value ) );
 
 /*Create function to automatically update updated_time.
 https://x-team.com/blog/automatic-timestamps-with-postgresql/ */
@@ -25,6 +50,15 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+/***
+General Notes
+***/
+
+/*Timestamp Storage
+We'll use TIMESTAMPTZ for all times. This is a timestamp with timezone. 
+https://medium.com/building-the-system/how-to-store-dates-and-times-in-postgresql-269bda8d6403#:~:text=TL%3BDR%2C%20Use%20PostgreSQL's%20%E2%80%9C,needs%20to%20be%20timezone%20aware.
+*/
 
 
 /***
@@ -37,22 +71,15 @@ CREATE TABLE users(
 	id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
     email EMAIL NOT NULL,
 	first_name VARCHAR(30) NOT NULL,
 	last_name VARCHAR(30) NOT NULL,
-    preferred_first_name VARCHAR(30),
-    timezone VARCHAR(30) NOT NULL,
+    timezone TIMEZONE NOT NULL --so that we can send messages at the right local time
 );
 
 --Each email can only be used by one user
 CREATE UNIQUE INDEX UQ_users__email
 	ON users (email);
-
---Restrict values for status
-ALTER TABLE users
-    ADD CONSTRAINT check_users__status
-    CHECK (status IN ('active', 'inactive'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__users
@@ -70,16 +97,16 @@ Examples: Mini Experiments; Dealing with a Difficult Boss
 ***/
 
 CREATE TABLE experiment_groups(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
-    experiment_group VARCHAR(250) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active', --we want to be able to update an experiment group for new users (e.g., update the name) while at the same time preserving data of previous experimenters. by setting it to inactive, we will not assign any new experimenters to this group but will maintain the data for previous experimenters.
+    experiment_group VARCHAR(250) NOT NULL
 );
 
---Each experiment group has to be unique
+--Each experiment_group with status = active has to be unique
 CREATE UNIQUE INDEX UQ_experiment_groups__experiment_group
-	ON experiment_groups (experiment_group);
+	ON experiment_groups (experiment_group) WHERE status = 'active';
 
 --Restrict values for status
 ALTER TABLE experiment_groups
@@ -101,11 +128,11 @@ Examples: Tristan is currently assigned to the Mini Experiments group; Tristan i
 ***/
 
 CREATE TABLE experiment_group_assignments(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
-    experiment_group_id BIGINT NOT NULL,
+    experiment_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active'
 );
 
@@ -115,13 +142,13 @@ CREATE UNIQUE INDEX UQ_experiment_group_assignments
 
 --Each row should be assigned to a user
 ALTER TABLE experiment_group_assignments
-    CONSTRAINT fk_experiment_group_assignments__users
+    ADD CONSTRAINT fk_experiment_group_assignments__users
     FOREIGN KEY(user_id)
     REFERENCES users(id);
 
 --Each row should be assigned to an experiment group
 ALTER TABLE experiment_group_assignments
-    CONSTRAINT fk_experiment_group_assignments__experiment_groups
+    ADD CONSTRAINT fk_experiment_group_assignments__experiment_groups
     FOREIGN KEY(experiment_group_id)
     REFERENCES experiment_groups(id);
 
@@ -146,24 +173,28 @@ Examples: Week 1, Week 2, Week 3 (if a user gets a set of experiments each week)
 ***/
 
 CREATE TABLE experiment_sub_groups(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    experiment_group_id bigint NOT NULL,
+    experiment_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     experiment_sub_group VARCHAR(250) NOT NULL,
-    assignment_order SMALLINT NOT NULL, --the order in which to assign this sub_group to a user (e.g., if a user gets a set of experiments each week, we want to assign Week 1 first, then Week 2, then Week 3)
+    assignment_order SMALLINT NOT NULL --the order in which to assign this sub_group to a user (e.g., if a user gets a set of experiments each week, we want to assign Week 1 first, then Week 2, then Week 3)
 );
 
 --Each sub_group has to be associated with an experiment_group
 ALTER TABLE experiment_sub_groups
-    CONSTRAINT fk_experiment_sub_groups__experiment_groups
+    ADD CONSTRAINT fk_experiment_sub_groups__experiment_groups
     FOREIGN KEY(experiment_group_id)
     REFERENCES experiment_groups(id)
 
---Each experiment_group / experiment_sub_group combination has to be unique
+--Each active experiment_group / experiment_sub_group combination has to be unique (we don't want to have two sub_groups with the same name)
 CREATE UNIQUE INDEX UQ_experiment_sub_groups__experiment_sub_group_combo
-	ON experiment_sub_groups (experiment_group_id, experiment_sub_group);
+	ON experiment_sub_groups (experiment_group_id, experiment_sub_group) WHERE status = 'active';
+
+--Each active experiment_group / assignment order combination has to be unique (we don't want to have two sub_groups with assignment_order = 3... which one do we assign?)
+CREATE UNIQUE INDEX UQ_experiment_sub_groups__experiment_group_assignment_order_combo
+	ON experiment_sub_groups (experiment_group_id, assignment_order) WHERE status = 'active';
 
 --Restrict values for status
 ALTER TABLE experiment_sub_groups
@@ -186,11 +217,11 @@ Examples: Send initial message to user about their Week 1 experiments on Monday 
 ***/
 
 CREATE TABLE experiment_sub_group_assignments(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
-    experiment_sub_group_id BIGINT NOT NULL,
+    experiment_sub_group_id VARCHAR(20) NOT NULL,
     action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
     action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action
     action_status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
@@ -227,17 +258,17 @@ Examples: Ask somone "how do you really feel"?; Stay silent for ~10 minutes in a
 ***/
 
 CREATE TABLE experiments(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    experiment_sub_group_id bigint NOT NULL,
+    experiment_sub_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     experiment VARCHAR NOT NULL,
 );
 
 --Each experiment has to be associated with an experiment_sub_group
 ALTER TABLE experiments
-    CONSTRAINT fk_experiments__experiment_sub_groups
+    ADD CONSTRAINT fk_experiments__experiment_sub_groups
     FOREIGN KEY(experiment_sub_group_id)
     REFERENCES experiment_sub_groups(id);
 
@@ -262,17 +293,17 @@ Examples: What do you want to do differently in the future?; What did you learn 
 ***/
 
 CREATE TABLE observation_prompts(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    experiment_id bigint NOT NULL,
+    experiment_id VARCHAR(20) NOT NULL,
     observation_prompt VARCHAR NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
 );
 
 --Each observation_prompt has to be associated with an experiment
 ALTER TABLE observation_prompts
-    CONSTRAINT fk_observation_prompts__experiments
+    ADD CONSTRAINT fk_observation_prompts__experiments
     FOREIGN KEY(experiment_id)
     REFERENCES experiments(id);
 
@@ -297,23 +328,23 @@ Examples: What do you want to do differently in the future?; What did you learn 
 ***/
 
 CREATE TABLE observations(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
-    observation_prompt_id bigint NOT NULL,
+    observation_prompt_id VARCHAR(20) NOT NULL,
     observation VARCHAR NOT NULL,
 );
 
 --Each observation has to be associated with an observation_prompt
 ALTER TABLE observations
-    CONSTRAINT fk_observations__observation_prompts
+    ADD CONSTRAINT fk_observations__observation_prompts
     FOREIGN KEY(observation_prompt_id)
     REFERENCES observation_prompts(id);
 
 --Each observation has to be associated with a user
 ALTER TABLE observations
-    CONSTRAINT fk_observations__users
+    ADD CONSTRAINT fk_observations__users
     FOREIGN KEY(user_id)
     REFERENCES users(id);
 
@@ -332,10 +363,10 @@ Purpose: Provide a public facing id that can be used to lookup a user_id without
 ***/
 
 CREATE TABLE user_lookups(
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    public_user_id VARCHAR(6) NOT NULL DEFAULT LEFT(md5(random()::text),6),
+    public_user_id VARCHAR(6) NOT NULL DEFAULT custom_id(6),
     user_id UUID NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
 );
@@ -350,7 +381,7 @@ CREATE UNIQUE INDEX UQ_user_lookups__user_id
 
 --Each user_lookup has to be associated with a user
 ALTER TABLE user_lookups
-    CONSTRAINT fk_user_lookups__users
+    ADD CONSTRAINT fk_user_lookups__users
     FOREIGN KEY(user_id)
     REFERENCES users(id);
 
@@ -372,29 +403,32 @@ EXECUTE PROCEDURE trigger_set_updated_time();
 TESTING
 ***/
 
---Test email uniqueness constraint
-INSERT INTO users(email, first_name, last_name) 
+--Test email uniqueness ADD CONSTRAINT
+INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
-	('tristanzucker@gmail.com', 'Tristan', 'Zucker'),
-	('tristanzucker@gmail.com', 'Tristan 2', 'Zucker');
+	('santa@gmail.com', 'Santa', 'Claus', 'America/New_York'),
+	('santa@gmail.com', 'Santa 2', 'Claus', 'America/New_York');
 
---Test email validity constraint
-INSERT INTO users(email, first_name, last_name) 
+--Test email validity ADD CONSTRAINT
+INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
-	('tristanzucker@@gmail.com', 'Tristan', 'Zucker');
+	('santa@@gmail.com', 'Santa', 'Claus', 'America/New_York');
 
---Test updated time
-INSERT INTO users(email, first_name, last_name, preferred_first_name) 
+--Test timezone validity ADD CONSTRAINT
+INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
-	('tristanzucker@gmail.com', 'Tristan', 'Zucker', ''),
-	('tristanandrewzucker@gmail.com', 'Tristan 2', 'Zucker', 'Tristan Second');
+	('santa@gmail.com', 'Santa', 'Claus', 'America/New_Yorkss');
+
+/*Test updated time*/
+INSERT INTO users(email, first_name, last_name, timezone) 
+VALUES
+	('santa@gmail.com', 'Santa', 'Claus', 'America/New_York'),
+	('santaclause@gmail.com', 'Santa 2', 'Claus', 'America/Chicago');
 
 -- Wait for a second, then run
 UPDATE users
-SET preferred_first_name = 'Tristan 2nd'
-WHERE 
-	preferred_first_name = 'Tristan Second' AND
-	email = 'tristanandrewzucker@gmail.com';
+SET first_name = 'Santa 2nd'
+WHERE first_name = 'Santa 2';
 
 --Check inserts, update time
 SELECT * FROM users;
@@ -403,101 +437,3 @@ SELECT * FROM users;
 
 
 
-
-
-
-
-
-/***
-Create experiments table.
-
-Purpose: store all available experiments.
-***/
-
-CREATE TABLE experiments(
-	id UUID DEFAULT uuid_generate_v4(),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	name VARCHAR NOT NULL,
-	description VARCHAR NOT NULL,
-	active BOOLEAN NOT NULL DEFAULT TRUE,
-	PRIMARY KEY (id)
-);
-
---Each experiment.name has to be unique
-CREATE UNIQUE INDEX experiment_name_unique_index
-	ON experiments (name);
-
---Automatically update updated_time.
-CREATE TRIGGER experiments_set_updated_time
-BEFORE UPDATE ON experiments
-FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
-
-/***
-
-Create experiment_preferences table.
-
-Purpose: store current and previous preferences for regarding experiments.
-***/
-
-CREATE TABLE experiment_preferences(
-	id UUID DEFAULT uuid_generate_v4(),
-	user_id UUID,
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	active BOOLEAN NOT NULL DEFAULT TRUE,
-	PRIMARY KEY (id),
-	CONSTRAINT fk_users --a preference has to be associated with a user
-		FOREIGN KEY(user_id)
-			REFERENCES users(id)
-);
-
---Each user_id can only have one active preference
-CREATE UNIQUE INDEX user_id_has_one_active_experiment_preference_index
-	ON experiment_preferences (user_id) WHERE active = TRUE;
-	
---Automatically update updated_time.
-CREATE TRIGGER experiment_preferences_set_updated_time
-BEFORE UPDATE ON experiment_preferences
-FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
-
---Test that each user_id can only have one active preference
-WITH new_rows(user_email) AS
-(VALUES
-	('tristanzucker@gmail.com') ,
-	('tristanandrewzucker@gmail.com')
-)  
-INSERT INTO experiment_preferences(user_id) 
-SELECT users.id
-FROM users
-	JOIN new_rows n
-	ON users.email = n.user_email;
-
---Try to insert the same user again 
-/*Should fail as experiment_preferences.active defaults to TRUE and violates each 
-user_id can only have one active preference*/
-WITH new_rows(user_email) AS
-(VALUES
-	('tristanzucker@gmail.com') 
-)  
-INSERT INTO experiment_preferences(user_id) 
-SELECT users.id
-FROM users
-	JOIN new_rows n
-	ON users.email = n.user_email;
-	
---Try to insert the same user again but with active = FALSE so that it doesn't violate constraint
-WITH new_rows(user_email, active) AS
-(VALUES
-	('tristanzucker@gmail.com', FALSE) 
-)  
-INSERT INTO experiment_preferences(user_id, active) 
-SELECT users.id, n.active
-FROM users
-	JOIN new_rows n
-	ON users.email = n.user_email;
-	
---Check that everything worked
-SELECT * FROM experiment_preferences;
