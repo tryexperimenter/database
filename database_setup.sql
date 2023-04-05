@@ -182,12 +182,6 @@ CREATE TABLE experiment_sub_groups(
     assignment_order SMALLINT NOT NULL --the order in which to assign this sub_group to a user (e.g., if a user gets a set of experiments each week, we want to assign Week 1 first, then Week 2, then Week 3)
 );
 
---Each sub_group has to be associated with an experiment_group
-ALTER TABLE experiment_sub_groups
-    ADD CONSTRAINT fk_experiment_sub_groups__experiment_groups
-    FOREIGN KEY(experiment_group_id)
-    REFERENCES experiment_groups(id)
-
 --Each active experiment_group / experiment_sub_group combination has to be unique (we don't want to have two sub_groups with the same name)
 CREATE UNIQUE INDEX UQ_experiment_sub_groups__experiment_sub_group_combo
 	ON experiment_sub_groups (experiment_group_id, experiment_sub_group) WHERE status = 'active';
@@ -195,6 +189,12 @@ CREATE UNIQUE INDEX UQ_experiment_sub_groups__experiment_sub_group_combo
 --Each active experiment_group / assignment order combination has to be unique (we don't want to have two sub_groups with assignment_order = 3... which one do we assign?)
 CREATE UNIQUE INDEX UQ_experiment_sub_groups__experiment_group_assignment_order_combo
 	ON experiment_sub_groups (experiment_group_id, assignment_order) WHERE status = 'active';
+
+--Each sub_group has to be associated with an experiment_group
+ALTER TABLE experiment_sub_groups
+    ADD CONSTRAINT fk_experiment_sub_groups__experiment_groups
+    FOREIGN KEY(experiment_group_id)
+    REFERENCES experiment_groups(id);
 
 --Restrict values for status
 ALTER TABLE experiment_sub_groups
@@ -224,17 +224,39 @@ CREATE TABLE experiment_sub_group_assignments(
     experiment_sub_group_id VARCHAR(20) NOT NULL,
     action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
     action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action
-    action_status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
+    action_status VARCHAR(30) NOT NULL --the status of the action (e.g., pending, completed)
 );
 
 --Each user should only get one action of a given type for a given experiment_sub_group
 CREATE UNIQUE INDEX UQ_experiment_sub_group_assignments
 	ON experiment_sub_group_assignments (user_id, experiment_sub_group_id, action_type);
 
---Restrict values for status
+--Each assignment has to be associated with a user
+ALTER TABLE experiment_sub_group_assignments
+    ADD CONSTRAINT fk_experiment_sub_group_assignments__user
+    FOREIGN KEY(user_id)
+    REFERENCES users(id);
+
+--Each assignment has to be associated with an experiment_sub_group
+ALTER TABLE experiment_sub_group_assignments
+    ADD CONSTRAINT fk_experiment_sub_group_assignments__experiment_sub_group
+    FOREIGN KEY(experiment_sub_group_id)
+    REFERENCES experiment_sub_groups(id);
+
+--Restrict values for action_type
+ALTER TABLE experiment_sub_group_assignments
+    ADD CONSTRAINT check_experiment_sub_group_assignments__action_type
+    CHECK (action_type IN (
+        'display_experiment_sub_group', --display the experiment_sub_group in the Experimenter Log
+        'send_initial_message', --send the initial message with the experiments to the user
+        'send_reminder_message', --send a reminder message to the user to do their experiments
+        'send_observation_message' --send a message to the user to ask them to answer their observation prompts
+        ));
+
+--Restrict values for action_status
 ALTER TABLE experiment_sub_group_assignments
     ADD CONSTRAINT check_experiment_sub_group_assignments__action_status
-    CHECK (status IN ('pending', 'completed', 'cancelled'));
+    CHECK (action_status IN ('pending', 'completed', 'cancelled'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__experiment_sub_group_assignments
@@ -264,7 +286,16 @@ CREATE TABLE experiments(
     experiment_sub_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     experiment VARCHAR NOT NULL,
+    display_order SMALLINT NOT NULL --the order in which to display these experiments
 );
+
+--Each active experiment_sub_group / experiment combination has to be unique (we don't want to have two of the same experiments in a subgroup)
+CREATE UNIQUE INDEX UQ_experiments__experiment_sub_group_combo
+	ON experiments (experiment_sub_group_id, experiment) WHERE status = 'active';
+
+--Each active experiment_sub_group / display order combination has to be unique (we don't want to have two experiments with the same display order)
+CREATE UNIQUE INDEX UQ_experiments__experiment_sub_group__display_order
+	ON experiments (experiment_sub_group_id, display_order) WHERE status = 'active';
 
 --Each experiment has to be associated with an experiment_sub_group
 ALTER TABLE experiments
@@ -297,9 +328,18 @@ CREATE TABLE observation_prompts(
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     experiment_id VARCHAR(20) NOT NULL,
-    observation_prompt VARCHAR NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
+    observation_prompt VARCHAR NOT NULL,
+    display_order SMALLINT NOT NULL --the order in which to display these observation prompts
 );
+
+--Each active experiment / observation prompt combination has to be unique (we don't want to have two of the same observation prompts for an experiment)
+CREATE UNIQUE INDEX UQ_observation_prompts__experiments
+	ON observation_prompts (experiment_id, observation_prompt) WHERE status = 'active';
+
+--Each active experiment / display order combination has to be unique (we don't want to have two observation prompts with the same display order)
+CREATE UNIQUE INDEX UQ_observation_prompts__experiments__display_order
+	ON observation_prompts (experiment_id, display_order) WHERE status = 'active';
 
 --Each observation_prompt has to be associated with an experiment
 ALTER TABLE observation_prompts
