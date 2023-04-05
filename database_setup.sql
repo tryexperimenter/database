@@ -416,9 +416,9 @@ CREATE TABLE user_lookups(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    public_user_id VARCHAR(6) NOT NULL DEFAULT custom_id(6),
     user_id UUID NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
+	public_user_id VARCHAR(6) NOT NULL DEFAULT custom_id(6)
 );
 
 --Each public_user_id must be unique
