@@ -446,6 +446,31 @@ BEFORE UPDATE ON user_lookups
 FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
+/***
+Table: api_calls
+
+Purpose: Provide a record of api_calls that are made.
+
+***/
+
+CREATE TABLE api_calls(
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
+	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    environment VARCHAR(20) NOT NULL,
+    endpoint VARCHAR(100) NOT NULL,
+);
+
+--Restrict values for environment
+ALTER TABLE api_calls
+    ADD CONSTRAINT check_api_calls__environment
+    CHECK (status IN ('development', 'production'));
+
+--Automatically update updated_time.
+CREATE TRIGGER set_updated_time__api_calls
+BEFORE UPDATE ON api_calls
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_updated_time();
 
 
 
