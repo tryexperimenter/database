@@ -1,3 +1,9 @@
+/*Also see Database Statements:
+
+https://docs.google.com/spreadsheets/d/1iGiOpZwZhzZG_NXiDi541MWtHguC-ycCUzIvhPthjSk/edit#gid=0
+*/
+
+
 /*View information about tables in database.*/
 
 SELECT *
