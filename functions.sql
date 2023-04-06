@@ -137,7 +137,7 @@ FROM identified_user iu
 LEFT JOIN assigned_experiments ae ON iu.user_id = ae.user_id
 LEFT JOIN user_observations uo ON ae.observation_prompt_id = uo.observation_prompt_id
 ORDER BY
-	display_datetime,
+	display_datetime DESC, -- the most recent exeperiments are shown first
 	e_display_order,
 	op_display_order;
 
