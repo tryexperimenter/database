@@ -458,13 +458,13 @@ CREATE TABLE api_calls(
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     environment VARCHAR(20) NOT NULL,
-    endpoint VARCHAR(100) NOT NULL,
+    endpoint VARCHAR(100) NOT NULL
 );
 
 --Restrict values for environment
 ALTER TABLE api_calls
     ADD CONSTRAINT check_api_calls__environment
-    CHECK (status IN ('development', 'production'));
+    CHECK (environment IN ('development', 'production'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__api_calls
