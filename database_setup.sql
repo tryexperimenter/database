@@ -374,6 +374,7 @@ CREATE TABLE observations(
     user_id UUID NOT NULL,
     observation_prompt_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active', -- in case we want to allow users to delete their observations
+    visibility VARCHAR(30) NOT NULL DEFAULT 'private', -- in case we want to allow users to make their observations public
     observation VARCHAR NOT NULL
 );
 
@@ -397,6 +398,11 @@ ALTER TABLE observations
 ALTER TABLE observations
     ADD CONSTRAINT check_observations__status 
     CHECK (status IN ('active', 'inactive'));
+
+--Restrict values for visibility
+ALTER TABLE observations
+    ADD CONSTRAINT check_observations__visibility
+    CHECK (visibility IN ('private', 'public_anonymous'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__observations
