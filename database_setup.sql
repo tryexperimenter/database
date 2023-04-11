@@ -430,20 +430,20 @@ CREATE TABLE experiment_actions(
 );
 
 --Each user / experiment_id can only have one active row
-CREATE UNIQUE INDEX UQ_experiment_actions__user_prompt
+CREATE UNIQUE INDEX UQ_experiment_actions__user_experiment
 	ON experiment_actions (user_id, experiment_id) WHERE status = 'active';
-
---Each experiment_action has to be associated with an experiment
-ALTER TABLE experiment_actions
-    ADD CONSTRAINT fk_experiment_actions__experiments
-    FOREIGN KEY(experiment_id)
-    REFERENCES experiments(id);
 
 --Each experiment_action has to be associated with a user
 ALTER TABLE experiment_actions
     ADD CONSTRAINT fk_experiment_actions__users
     FOREIGN KEY(user_id)
     REFERENCES users(id);
+
+--Each experiment_action has to be associated with an experiment
+ALTER TABLE experiment_actions
+    ADD CONSTRAINT fk_experiment_actions__experiments
+    FOREIGN KEY(experiment_id)
+    REFERENCES experiments(id);
 
 --Restrict values for status
 ALTER TABLE experiment_actions
@@ -455,14 +455,14 @@ ALTER TABLE experiment_actions
     ADD CONSTRAINT check_experiment_actions__action_taken
     CHECK (action_taken IN ('experimented', 'experimented_with_modifications', 'did_not_experiment'));
 
---Restrict values for action_taken
+--Restrict values for future_action
 ALTER TABLE experiment_actions
     ADD CONSTRAINT check_experiment_actions__future_action
     CHECK (action_taken IN ('repeat_action', 'do_not_repeat_action'));
 
 --Automatically update updated_time.
-CREATE TRIGGER set_updated_time__observations
-BEFORE UPDATE ON observations
+CREATE TRIGGER set_updated_time__experiment_actions
+BEFORE UPDATE ON experiment_actions
 FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
