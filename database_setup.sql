@@ -116,6 +116,12 @@ Purpose: stores the actions Experimenter will take / has taken for each user / s
 
 Row Example: user: Tristan, group: Mini Experiments, sub_group: Week 2, action: send_email, action_datetime: 2023-04-17 9:00 AM
 
+------------------
+Table: sub_group_action_emails
+
+Purpose: store the emails that we send to users as part of a sub_group_action
+
+Row Example: sub_group_action_assignments_id: DjskifjsA, email_subject: Week 2 Observations, email_body: This is the email body..., enqueued_datetime: 2023-04-17 5:00 AM, scheduled_datetime: 2023-04-17 9:00 AM, sent_datetime: 2023-04-17 9:00 AM, status: sent
 
 
 ***/
@@ -259,6 +265,11 @@ ALTER TABLE sub_groups
     ADD CONSTRAINT check_sub_groups__status 
     CHECK (status IN ('active', 'inactive'));
 
+--Ensure that start_date_days_offset is not negative
+ALTER TABLE sub_groups
+    ADD CONSTRAINT check_sub_groups__start_date_days_offset
+    CHECK (start_date_days_offset >= 0);
+
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__sub_groups
 BEFORE UPDATE ON sub_groups
@@ -319,16 +330,24 @@ CREATE TABLE sub_group_actions(
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sub_group_id VARCHAR(20) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
     action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
     action_datetime_days_offset SMALLINT NOT NULL, --the number of days after the start_date of the sub_group_assignment to take the action (0 = same day, 1 = next day, etc.)
     action_datetime_time_of_day_local TIME NOT NULL, --the time of day to take the action (e.g., 9:00 AM, 12:00 PM, 5:00 PM, etc.)
+    email_subject VARCHAR(250), --the subject of the email to send (if applicable)
+    email_body TEXT, --the body of the email to send (if applicable)
 );
 
---Each action_template has to be associated with an sub_group
+--Each action_template has to be associated with a sub_group
 ALTER TABLE sub_group_actions
     ADD CONSTRAINT fk_sub_group_actions__sub_group
     FOREIGN KEY(sub_group_id)
     REFERENCES sub_groups(id);
+
+--Restrict values for status
+ALTER TABLE sub_group_actions
+    ADD CONSTRAINT check_sub_group_actions__status 
+    CHECK (status IN ('active', 'inactive'));
 
 --Restrict values for action_type
 ALTER TABLE sub_group_actions
@@ -337,6 +356,21 @@ ALTER TABLE sub_group_actions
         'display_information', --display the sub_group in the Experimenter Log
         'send_message', --send a message to the user
         ));
+
+--Ensure email_subject is not null if action_type is send_message
+ALTER TABLE sub_group_actions
+    ADD CONSTRAINT check_sub_group_actions__email_subject
+    CHECK (action_type != 'send_message' OR email_subject IS NOT NULL);
+
+--Ensure email is not null if action_type is send_message
+ALTER TABLE sub_group_actions
+    ADD CONSTRAINT check_sub_group_actions__email_body
+    CHECK (action_type != 'send_message' OR email_body IS NOT NULL);
+
+--Ensure action_datetime_days_offset is not negatie
+ALTER TABLE sub_group_actions
+    ADD CONSTRAINT check_sub_group_actions__action_datetime_days_offset
+    CHECK (action_datetime_days_offset >= 0);
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__sub_group_actions
@@ -357,7 +391,7 @@ CREATE TABLE sub_group_action_assignments(
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     sub_group_action_id VARCHAR(20) NOT NULL,
-    action_status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
+    status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
     action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action. Date: the next sub_group_actions.day_of_week that occurs after the sub_group_assignments.start_date
 );
 
@@ -377,14 +411,14 @@ ALTER TABLE sub_group_action_assignments
     FOREIGN KEY(sub_group_action_id)
     REFERENCES sub_group_actions(id);
 
---Restrict values for action_status
+--Restrict values for status
 ALTER TABLE sub_group_action_assignments
-    ADD CONSTRAINT check_sub_group_action_assignments__action_status
-    CHECK (action_status IN (
+    ADD CONSTRAINT check_sub_group_action_assignments__status
+    CHECK (status IN (
         'pending', --we have yet to take action
-        'message_scheduled', -- message has been scheduled, but not sent
-        'message_failed', -- message failed to send
-        'message_sent', -- message has been sent
+        'message_enqueued', -- message has been scheduled, but not sent
+        'message_failed_to_enqueue', -- message failed to enqueue
+        'message_failed_to_send', -- message failed to send
         'completed', 
         'canceled'
         ));
@@ -392,6 +426,49 @@ ALTER TABLE sub_group_action_assignments
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__sub_group_action_assignments
 BEFORE UPDATE ON sub_group_action_assignments
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_updated_time();
+
+
+/***
+
+Table: sub_group_action_emails
+
+***/
+
+CREATE TABLE sub_group_action_emails(
+	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
+	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sub_group_action_assignment_id VARCHAR(20) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'enqueued',
+    sender EMAIL NOT NULL,
+    recipient EMAIL NOT NULL,
+    email_subject VARCHAR(250) NOT NULL, --the subject of the email to send
+    email_body TEXT NOT NULL, --the body of the email to send
+    enqueued_datetime TIMESTAMPTZ NOT NULL, --the date and time on which the email was enqueued
+    scheduled_datetime TIMESTAMPTZ NOT NULL, --the date and time on which the email is scheduled to be sent
+    sent_datetime TIMESTAMPTZ, --the date and time on which the email was sent
+);
+
+--Each email has to be associated with a sub_group_action_assignment
+ALTER TABLE sub_group_action_emails
+    ADD CONSTRAINT fk_sub_group_action_emails__sub_group_action_assignments
+    FOREIGN KEY(sub_group_action_assignment_id)
+    REFERENCES sub_group_action_assignments(id);
+
+--Restrict values for status
+ALTER TABLE sub_group_action_emails
+    ADD CONSTRAINT check_sub_group_action_emails__status
+    CHECK (status IN (
+        'enqueued', -- message has been scheduled, but not sent
+        'failed', -- message failed to send
+        'sent', -- message has been sent
+        ));
+
+--Automatically update updated_time.
+CREATE TRIGGER set_updated_time__sub_group_action_emails
+BEFORE UPDATE ON sub_group_action_emails
 FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
