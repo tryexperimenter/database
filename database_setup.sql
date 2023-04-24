@@ -68,9 +68,11 @@ Table: groups
 
 Purpose: stores different groups a user could join (e.g., Mini Experiments; Dealing with a Difficult Boss)
 
-Row Example: group: Mini Experiments
+Row Example: group: Mini Experiments, status: active
 
-Usage Example: After a user selects to join the Mini Experiments group, we create a 
+Usage Example: We display all of the different groups a user can join. The user selects the group they want to join and we create an entry in the group_assignments table.
+
+Note: We want to be able to update an experiment group for new users (e.g., update the name) while at the same time preserving data of previous experimenters. By setting status = inactive, we will not assign any new experimenters to this group but will maintain the data for previous experimenters.
 
 ------------------
 Table: group_assignments
@@ -85,9 +87,9 @@ Usage Example: On Wednesday, 2023-04-05, Tristan selects to join the Mini Experi
 ------------------
 Table: sub_groups
 
-Purpose: Each week (or two weeks, etc.), we want to take certain actions for a group. A sub_group allows us to group those actions together (e.g., Week 1 actions, Week 2 actions). This table allows us to name each sub_group and know how to calculate the start_date of the sub_group (relative to the start_date of the previous sub_group or the group itself if it's the first sub_group). It is important to know the start_date of the sub_group because we use that to determine when to take an action for the sub_group (e.g., send out the email introducing the experiments for the sub_group).
+Purpose: Each week (or two weeks, etc.), we want to take certain actions for a group. A sub_group allows us to group those actions together (e.g., Week 1 actions, Week 2 actions). This table allows us to name each sub_group and know how to calculate the start_date of the sub_group (relative to the start_date of the previous sub_group or the group itself if it's the first sub_group). It is important to know the start_date of the sub_group because we use that to determine when to take an action for the sub_group (e.g., send out the email introducing the experiments for the sub_group on the start_date of the sub_group).
 
-Note: start_date_day_of_week is optional and only used if we want to ensure that the sub_group's start_date always falls on the same day of the week. In the case it is provided, we will choose the earliest occurring day of the week that is after the start_date_days_offset. This is necessary in the case where we pause a group and then restart it. We want to ensure that the sub_group's start_date always falls on the same day of the week.
+Note: start_date_day_of_week is optional and only used if we want to ensure that the sub_group's start_date always falls on the same day of the week. In the case it is provided, we will choose the earliest occurring day of the week that is after the start_date_days_offset. This becomes applicable if a user pauses the group and then decides to restart on an arbitrary date and we need to ensure the sub_group starts on the right day of the week.
 
 Row Example: group: Mini Experiments, sub_group: Week 2, assignment_order: 2, start_date_days_offset: 6, start_date_day_of_week: Monday
 
@@ -101,14 +103,14 @@ Purpose: stores which sub_groups a user is assigned to, the start_date of the as
 Row Example: user: Tristan, group: Mini Experiments, sub_group: Week 2, start_date: 2023-04-17, status: active
 
 ------------------
-Table: sub_group_action_templates
+Table: sub_group_actions
 
 Purpose: stores the different actions we will take for each sub_group, when to take them relative to the sub_group_assignments.start_date, and any email template we will use for the action
 
 Row Example: group: Mini Experiments, sub_group: Week 2, action: send_email, action_datetime_days_offset: 0, action_datetime_local_time_of_day: 9:00 AM, email_subject: Week 2 Experiments, email_body: Here are the experiments for Week 2: {experiments}
 
 ------------------
-Table: sub_group_actions
+Table: sub_group_action_assignments
 
 Purpose: stores the actions Experimenter will take / has taken for each user / sub_group combination and the datetime to take the action (based on sub_group_assignments.start_date, sub_group_action_templates.action_datetime_days_offset, and sub_group_action_templates.action_datetime_local_time_of_day)
 
@@ -120,9 +122,9 @@ Row Example: user: Tristan, group: Mini Experiments, sub_group: Week 2, action: 
 
 
 /***
+
 Table: users
 
-Purpose: store info on users
 ***/
 
 CREATE TABLE users(
@@ -147,11 +149,9 @@ EXECUTE PROCEDURE trigger_set_updated_time();
 
 
 /***
+
 Table: groups
 
-Purpose: a user gets assigned experiments based on the experiment group(s) they belong to
-
-Examples: Mini Experiments; Dealing with a Difficult Boss
 ***/
 
 CREATE TABLE groups(
@@ -178,7 +178,9 @@ FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
 /***
+
 Table: group_assignments
+
 ***/
 
 CREATE TABLE group_assignments(
@@ -191,8 +193,8 @@ CREATE TABLE group_assignments(
     start_date DATE NOT NULL,
 );
 
---Each user / experiment group should be unique
-CREATE UNIQUE INDEX UQ_group_assignments
+--Each user / experiment group should be unique if active / paused
+CREATE UNIQUE INDEX UQ_group_assignments__user_id__group_id
 	ON group_assignments (user_id, group_id) WHERE status IN ('active', 'paused');
 
 --Each row should be assigned to a user
@@ -210,7 +212,7 @@ ALTER TABLE group_assignments
 --Restrict values for status
 ALTER TABLE group_assignments
     ADD CONSTRAINT check_group_assignments__status
-    CHECK (status IN ('active', 'paused', 'completed'));
+    CHECK (status IN ('active', 'paused', 'completed', 'canceled'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__group_assignments
@@ -220,11 +222,8 @@ EXECUTE PROCEDURE trigger_set_updated_time();
 
 
 /***
+
 Table: sub_groups
-
-Purpose: each group has one or more sub_groups. A sub_group is how we group experiments / actions to take with regard to a user.
-
-Examples: Week 1, Week 2, Week 3 (if a user gets a set of experiments each week); Beginner, Intermediate, and Advanced (if a user is going to get more and more difficult experiments over time)
 
 ***/
 
@@ -238,7 +237,7 @@ CREATE TABLE sub_groups(
     sub_group VARCHAR(250) NOT NULL,
     assignment_order SMALLINT NOT NULL, --the order in which to assign this sub_group to a user (e.g., if a user gets a set of experiments each week, we want to assign 1 = Week 1 first, 2 = Week 2, 3 =  Week 3)
     start_date_days_offset SMALLINT NOT NULL, --the start_date of any sub_group_assignment has to be this many days after the start_date of the previous sub_group_assignment (0 = same day, 1 = next day). if there are no previous sub_groups, then we'll use the start_date of the group_assignment
-    start_date_day_of_week SMALLINT, --if used, the start_date of any sub_group_assignment has to be on this day of the week (if the min_start_date_days_offset does not fall on this day, the start_date will be the next time this day_of_week occurs)
+    start_date_day_of_week SMALLINT, --if used, the start_date of any sub_group_assignment has to be on this day of the week (if the min_start_date_days_offset does not fall on this day, the start_date will be the next time this day_of_week occurs) (0 = sunday, 1 = monday, etc.)
 );
 
 --Each active group / sub_group combination has to be unique (we don't want to have two sub_groups with the same name)
@@ -249,7 +248,7 @@ CREATE UNIQUE INDEX UQ_sub_groups__sub_group_combo
 CREATE UNIQUE INDEX UQ_sub_groups__group_assignment_order_combo
 	ON sub_groups (group_id, assignment_order) WHERE status = 'active';
 
---Each sub_group has to be associated with an group
+--Each sub_group has to be associated with a group
 ALTER TABLE sub_groups
     ADD CONSTRAINT fk_sub_groups__groups
     FOREIGN KEY(group_id)
@@ -267,11 +266,9 @@ FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
 /***
+
 Table: sub_group_assignments
 
-Purpose: Record which experiment sub_groups a user is assigned to and whether the assignment is active
-
-Examples: Tristan is currently assigned to the Mini Experiments - Week 1 (start_datetime: XXX), Mini Experiments - Week 2 (start_datetime: XXX)
 ***/
 
 CREATE TABLE sub_group_assignments(
@@ -284,9 +281,9 @@ CREATE TABLE sub_group_assignments(
     start_date DATE NOT NULL,
 );
 
---Each user / experiment sub_group should be unique
-CREATE UNIQUE INDEX UQ_sub_group_assignments
-	ON sub_group_assignments (user_id, sub_group_id);
+--Each user / experiment sub_group should be unique if sub_group is pending or active or completed
+CREATE UNIQUE INDEX UQ_sub_group_assignments__user_id__sub_group_id
+	ON sub_group_assignments (user_id, sub_group_id) WHERE status IN ('pending', 'active', 'completed');
 
 --Each row should be assigned to a user
 ALTER TABLE sub_group_assignments
@@ -303,7 +300,7 @@ ALTER TABLE sub_group_assignments
 --Restrict values for status
 ALTER TABLE sub_group_assignments
     ADD CONSTRAINT check_sub_group_assignments__status
-    CHECK (status IN ('active', 'paused', 'completed'));
+    CHECK (status IN ('pending', 'active', 'completed', 'canceled'));
 
 --Automatically update updated_time.
 CREATE TRIGGER set_updated_time__sub_group_assignments
@@ -312,14 +309,12 @@ FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
 /***
-Table: sub_group_action_templates
 
-Purpose: Store the potential actions that we can take for each sub_group
+Table: sub_group_actions
 
-Examples: start_displaying_experiments in Experimenter Log, send initial message to user about their Week 1 experiments, send reminder message to user about their Week 1 experiments, send observation message to user about their Week 1 experiments
 ***/
 
-CREATE TABLE sub_group_action_templates(
+CREATE TABLE sub_group_actions(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -330,20 +325,14 @@ CREATE TABLE sub_group_action_templates(
 );
 
 --Each action_template has to be associated with an sub_group
-ALTER TABLE sub_group_action_templates
-    ADD CONSTRAINT fk_sub_group_action_templates__user
-    FOREIGN KEY(user_id)
-    REFERENCES users(id);
-
---Each assignment has to be associated with an sub_group
-ALTER TABLE sub_group_action_templates
-    ADD CONSTRAINT fk_sub_group_action_templates__sub_group
+ALTER TABLE sub_group_actions
+    ADD CONSTRAINT fk_sub_group_actions__sub_group
     FOREIGN KEY(sub_group_id)
     REFERENCES sub_groups(id);
 
 --Restrict values for action_type
 ALTER TABLE sub_group_actions
-    ADD CONSTRAINT check_sub_group_actions__action
+    ADD CONSTRAINT check_sub_group_actions__action_type
     CHECK (action_type IN (
         'display_information', --display the sub_group in the Experimenter Log
         'send_message', --send a message to the user
@@ -357,55 +346,52 @@ EXECUTE PROCEDURE trigger_set_updated_time();
 
 
 /***
-Table: sub_group_actions
 
-Purpose: Store which sub_groups have been assigned to each user and which actions to take to communicate to users. We also use this table to know what experiments to display in the Experimenter Log.
+Table: sub_group_action_assignments
 
-Examples: Send initial message to user about their Week 1 experiments on Monday at 9 am ET. 
 ***/
 
-CREATE TABLE sub_group_actions(
+CREATE TABLE sub_group_action_assignments(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
 	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
-    sub_group_id VARCHAR(20) NOT NULL,
-    action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
-    action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action. Date: the next sub_group_action_templates.day_of_week that occurs after the sub_group_assignments.start_date
-    action_status VARCHAR(30) NOT NULL --the status of the action (e.g., pending, completed)
+    sub_group_action_id VARCHAR(20) NOT NULL,
+    action_status VARCHAR(30) NOT NULL DEFAULT 'pending', --the status of the action (e.g., pending, completed)
+    action_datetime TIMESTAMPTZ NOT NULL, --the date and time on which to take the action. Date: the next sub_group_actions.day_of_week that occurs after the sub_group_assignments.start_date
 );
 
---Each user should only get one action of a given type for a given sub_group
-CREATE UNIQUE INDEX UQ_sub_group_actions
-	ON sub_group_actions (user_id, sub_group_id, action_type);
+--Each user should only get assigned each action once
+CREATE UNIQUE INDEX UQ_sub_group_action_assignments
+	ON sub_group_action_assignments (user_id, sub_group_action_id) WHERE action_status NOT IN ('canceled');
 
 --Each assignment has to be associated with a user
-ALTER TABLE sub_group_actions
-    ADD CONSTRAINT fk_sub_group_actions__user
+ALTER TABLE sub_group_action_assignments
+    ADD CONSTRAINT fk_sub_group_action_assignments__user
     FOREIGN KEY(user_id)
     REFERENCES users(id);
 
---Each assignment has to be associated with an sub_group
-ALTER TABLE sub_group_actions
-    ADD CONSTRAINT fk_sub_group_actions__sub_group
-    FOREIGN KEY(sub_group_id)
-    REFERENCES sub_groups(id);
+--Each assignment has to be associated with a sub_group_action
+ALTER TABLE sub_group_action_assignments
+    ADD CONSTRAINT fk_sub_group_action_assignments__sub_group_action
+    FOREIGN KEY(sub_group_action_id)
+    REFERENCES sub_group_actions(id);
 
 --Restrict values for action_status
-ALTER TABLE sub_group_actions
-    ADD CONSTRAINT check_sub_group_actions__action_status
+ALTER TABLE sub_group_action_assignments
+    ADD CONSTRAINT check_sub_group_action_assignments__action_status
     CHECK (action_status IN (
         'pending', --we have yet to take action
         'message_scheduled', -- message has been scheduled, but not sent
         'message_failed', -- message failed to send
         'message_sent', -- message has been sent
         'completed', 
-        'cancelled'
+        'canceled'
         ));
 
 --Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_group_actions
-BEFORE UPDATE ON sub_group_actions
+CREATE TRIGGER set_updated_time__sub_group_action_assignments
+BEFORE UPDATE ON sub_group_action_assignments
 FOR EACH ROW
 EXECUTE PROCEDURE trigger_set_updated_time();
 
