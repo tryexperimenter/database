@@ -10,7 +10,7 @@ Example Python call: response = supabase_client.rpc(fn = "get_user", params = {"
 Python call to postgres function with no parameters given
 response = supabase_client.rpc(fn = "users", params = {}).execute()
 */
-CREATE OR REPLACE FUNCTION users()
+CREATE OR REPLACE FUNCTION get_all_users()
 RETURNS setof users
 LANGUAGE SQL
 AS $$
