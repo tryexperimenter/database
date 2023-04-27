@@ -163,7 +163,8 @@ CREATE TABLE users(
     email EMAIL NOT NULL,
 	first_name VARCHAR(30) NOT NULL,
 	last_name VARCHAR(30) NOT NULL,
-    timezone TIMEZONE NOT NULL --so that we can send messages at the right local time
+    timezone TIMEZONE NOT NULL, --so that we can send messages at the right local time
+    url_stub_experimenter_log VARCHAR(10) NOT NULL, --this is the url stub for the user's experimenter log when we're using Tally.so for experimenter logs
 );
 
 --Each email can only be used by one user
@@ -455,7 +456,7 @@ ALTER TABLE sub_group_actions
         'message_failed_to_schedule', -- we failed to schedule the message
         'message_failed_to_send', -- message failed to send after being scheduled
         'message_sent', -- message was sent
-        'canceled'
+        'canceled' -- we no longer want to take action (e.g., if the user decides to pause a group)
         ));
 
 --Automatically update updated_time.
