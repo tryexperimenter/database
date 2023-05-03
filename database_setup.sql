@@ -500,8 +500,8 @@ ALTER TABLE sub_group_action_emails
 ALTER TABLE sub_group_action_emails
     ADD CONSTRAINT check_sub_group_action_emails__status
     CHECK (status IN (
-        'messaged_scheduled', -- message has been scheduled, but not sent
-        'messaged_failed_to_send', -- message failed to send
+        'message_scheduled', -- message has been scheduled, but not sent
+        'message_failed_to_send', -- message failed to send
         'message_sent', -- message has been sent
         'message_delivered', -- message has been delivered
         'message_opened', --message has been opened
