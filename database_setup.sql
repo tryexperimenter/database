@@ -41,12 +41,12 @@ $$ language plpgsql STABLE;
 CREATE DOMAIN timezone AS TEXT
 CHECK ( is_timezone( value ) );
 
-/*Create function to automatically update updated_time.
+/*Create function to automatically update updated_datetime.
 https://x-team.com/blog/automatic-timestamps-with-postgresql/ */
-CREATE OR REPLACE FUNCTION trigger_set_updated_time()
+CREATE OR REPLACE FUNCTION trigger_set_updated_datetime()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_time = NOW();
+  NEW.updated_datetime = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -158,8 +158,8 @@ Table: users
 
 CREATE TABLE users(
 	id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     email EMAIL NOT NULL,
 	first_name VARCHAR(30) NOT NULL,
 	last_name VARCHAR(30) NOT NULL,
@@ -171,11 +171,11 @@ CREATE TABLE users(
 CREATE UNIQUE INDEX UQ_users__email
 	ON users (email);
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__users
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__users
 BEFORE UPDATE ON users
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -186,8 +186,8 @@ Table: groups
 
 CREATE TABLE groups(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     status VARCHAR(30) NOT NULL DEFAULT 'active', --we want to be able to update an experiment group for new users (e.g., update the name) while at the same time preserving data of previous experimenters. by setting it to inactive, we will not assign any new experimenters to this group but will maintain the data for previous experimenters.
     group_name VARCHAR(250) NOT NULL
 );
@@ -201,11 +201,11 @@ ALTER TABLE groups
     ADD CONSTRAINT check_groups__status 
     CHECK (status IN ('active', 'inactive'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__groups
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__groups
 BEFORE UPDATE ON groups
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 /***
 
@@ -215,8 +215,8 @@ Table: group_assignments
 
 CREATE TABLE group_assignments(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
@@ -244,11 +244,11 @@ ALTER TABLE group_assignments
     ADD CONSTRAINT check_group_assignments__status
     CHECK (status IN ('active', 'paused', 'completed', 'canceled'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__group_assignments
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__group_assignments
 BEFORE UPDATE ON group_assignments
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -260,8 +260,8 @@ Table: sub_groups
 
 CREATE TABLE sub_groups(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     sub_group_name VARCHAR(250) NOT NULL,
@@ -305,11 +305,11 @@ ALTER TABLE sub_groups
     CHECK (start_date_day_of_week >= 0 AND start_date_day_of_week <= 6);
 
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_groups
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__sub_groups
 BEFORE UPDATE ON sub_groups
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 /***
 
@@ -319,8 +319,8 @@ Table: sub_group_assignments
 
 CREATE TABLE sub_group_assignments(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     sub_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL,
@@ -348,11 +348,11 @@ ALTER TABLE sub_group_assignments
     ADD CONSTRAINT check_sub_group_assignments__status
     CHECK (status IN ('pending', 'active', 'completed', 'canceled'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_group_assignments
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__sub_group_assignments
 BEFORE UPDATE ON sub_group_assignments
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 /***
 
@@ -362,8 +362,8 @@ Table: sub_group_action_templates
 
 CREATE TABLE sub_group_action_templates(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sub_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     action_type VARCHAR(30) NOT NULL, --the type of action to take (e.g., send initial message, send reminder message, send observation message)
@@ -407,11 +407,11 @@ ALTER TABLE sub_group_action_templates
     ADD CONSTRAINT check_sub_group_action_templates__action_datetime_days_offset
     CHECK (action_datetime_days_offset >= 0);
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_group_action_templates
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__sub_group_action_templates
 BEFORE UPDATE ON sub_group_action_templates
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -422,8 +422,8 @@ Table: sub_group_actions
 
 CREATE TABLE sub_group_actions(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     sub_group_action_template_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL, --the status of the action (e.g., pending, completed)
@@ -459,11 +459,11 @@ ALTER TABLE sub_group_actions
         'canceled' -- we no longer want to take action (e.g., if the user decides to pause a group)
         ));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_group_actions
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__sub_group_actions
 BEFORE UPDATE ON sub_group_actions
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -474,11 +474,13 @@ Table: sub_group_action_emails
 
 CREATE TABLE sub_group_action_emails(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    sub_group_action_assignment_id VARCHAR(20) NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'scheduled', --the status of the email (e.g., scheduled, sent, failed_to_send)
-    TBD_WHICH_VARS_WE_NEED_message_id VARCHAR(100),,, --the id of the message in the email service (e.g., sendgrid)
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sub_group_action_id VARCHAR(20) NOT NULL,
+    status VARCHAR(30) NOT NULL, --the status of the email (e.g., scheduled, sent, failed_to_send)
+    twilio_x_message_id VARCHAR(100) NOT NULL, -- the message id returned by SendGrid when scheduling  / sending a message
+    twilio_message_id VARCHAR(100), -- the message id returned by SendGrid (uniquely assigned to each email)
+    twilio_batch_id VARCHAR(100), -- the batch id we generate when sending via SendGrid (so that we can delete the batch if we no longer want to send the message)
     sender EMAIL NOT NULL,
     recipient EMAIL NOT NULL,
     email_subject VARCHAR(250) NOT NULL, --the subject of the email to send
@@ -490,27 +492,27 @@ CREATE TABLE sub_group_action_emails(
 
 --Each email has to be associated with a sub_group_action_assignment
 ALTER TABLE sub_group_action_emails
-    ADD CONSTRAINT fk_sub_group_action_emails__sub_group_action_assignments
-    FOREIGN KEY(sub_group_action_assignment_id)
-    REFERENCES sub_group_action_assignments(id);
+    ADD CONSTRAINT fk_sub_group_action_emails__sub_group_actions
+    FOREIGN KEY(sub_group_action_id)
+    REFERENCES sub_group_actions(id);
 
 --Restrict values for status
 ALTER TABLE sub_group_action_emails
     ADD CONSTRAINT check_sub_group_action_emails__status
     CHECK (status IN (
-        'scheduled', -- message has been scheduled, but not sent
-        'failed_to_send', -- message failed to send
-        'sent', -- message has been sent
-        'delivered', -- message has been delivered
-        'opened', --message has been opened
-        'clicked' --message has been clicked
+        'messaged_scheduled', -- message has been scheduled, but not sent
+        'messaged_failed_to_send', -- message failed to send
+        'message_sent', -- message has been sent
+        'message_delivered', -- message has been delivered
+        'message_opened', --message has been opened
+        'message_clicked' --message has been clicked
         ));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__sub_group_action_emails
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__sub_group_action_emails
 BEFORE UPDATE ON sub_group_action_emails
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -520,8 +522,8 @@ Table: experiment_prompts
 
 CREATE TABLE experiment_prompts(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sub_group_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     experiment_prompt VARCHAR NOT NULL,
@@ -552,11 +554,11 @@ ALTER TABLE experiment_prompts
     ADD CONSTRAINT check_experiment_prompts__display_order
     CHECK (display_order > 0);
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__experiment_prompts
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__experiment_prompts
 BEFORE UPDATE ON experiment_prompts
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -569,8 +571,8 @@ Examples: What do you want to do differently in the future?; What did you learn 
 
 CREATE TABLE observation_prompts(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     experiment_prompt_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     observation_prompt VARCHAR NOT NULL,
@@ -601,11 +603,11 @@ ALTER TABLE observation_prompts
     ADD CONSTRAINT check_observation_prompts__display_order
     CHECK (display_order > 0);
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__observation_prompts
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__observation_prompts
 BEFORE UPDATE ON observation_prompts
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -618,8 +620,8 @@ Examples: What do you want to do differently in the future?; What did you learn 
 
 CREATE TABLE observations(
 	id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     observation_prompt_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active', -- in case we want to allow users to delete their observations
@@ -653,11 +655,11 @@ ALTER TABLE observations
     ADD CONSTRAINT check_observations__visibility
     CHECK (visibility IN ('private', 'public_anonymous'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__observations
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__observations
 BEFORE UPDATE ON observations
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -668,8 +670,8 @@ Purpose: Record whether the user did the experiment, how they did it, and whethe
 
 CREATE TABLE experiment_actions(
 	id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     experiment_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active', -- in case we want to allow users to delete their experiment_actions
@@ -709,11 +711,11 @@ ALTER TABLE experiment_actions
     ADD CONSTRAINT check_experiment_actions__future_action
     CHECK (future_action IN ('repeat_action', 'do_not_repeat_action', ''));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__experiment_actions
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__experiment_actions
 BEFORE UPDATE ON experiment_actions
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 /***
@@ -725,8 +727,8 @@ Purpose: Provide a public facing id that can be used to lookup a user_id without
 
 CREATE TABLE user_lookups(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
 	public_user_id VARCHAR(6) NOT NULL DEFAULT custom_id(6)
@@ -751,11 +753,11 @@ ALTER TABLE user_lookups
     ADD CONSTRAINT check_user_lookups__status 
     CHECK (status IN ('active', 'inactive'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__user_lookups
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__user_lookups
 BEFORE UPDATE ON user_lookups
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 /***
 Table: api_calls
@@ -766,8 +768,8 @@ Purpose: Provide a record of api_calls that are made.
 
 CREATE TABLE api_calls(
 	id VARCHAR(20) PRIMARY KEY DEFAULT custom_id(20),
-	created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     environment VARCHAR(20) NOT NULL,
     endpoint VARCHAR(100) NOT NULL
 );
@@ -777,11 +779,11 @@ ALTER TABLE api_calls
     ADD CONSTRAINT check_api_calls__environment
     CHECK (environment IN ('development', 'production'));
 
---Automatically update updated_time.
-CREATE TRIGGER set_updated_time__api_calls
+--Automatically update updated_datetime.
+CREATE TRIGGER set_updated_datetime__api_calls
 BEFORE UPDATE ON api_calls
 FOR EACH ROW
-EXECUTE PROCEDURE trigger_set_updated_time();
+EXECUTE PROCEDURE trigger_set_updated_datetime();
 
 
 
