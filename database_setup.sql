@@ -164,7 +164,7 @@ CREATE TABLE users(
 	first_name VARCHAR(30) NOT NULL,
 	last_name VARCHAR(30) NOT NULL,
     timezone TIMEZONE NOT NULL, --so that we can send messages at the right local time
-    url_stub_experimenter_log VARCHAR(10) NOT NULL, --this is the url stub for the user's experimenter log when we're using Tally.so for experimenter logs
+    url_stub_experimenter_log VARCHAR(10) NOT NULL --this is the url stub for the user's experimenter log when we're using Tally.so for experimenter logs
 );
 
 --Each email can only be used by one user
@@ -673,7 +673,7 @@ CREATE TABLE experiment_actions(
 	created_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_datetime TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     user_id UUID NOT NULL,
-    experiment_id VARCHAR(20) NOT NULL,
+    experiment_prompt_id VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'active', -- in case we want to allow users to delete their experiment_actions
     action_taken VARCHAR(30) NOT NULL DEFAULT 'experimented', -- in case we want to allow users to make their observations public
     action_description VARCHAR, -- what action the user took to experiment
@@ -681,8 +681,8 @@ CREATE TABLE experiment_actions(
 );
 
 --Each user / experiment_id can only have one active row
-CREATE UNIQUE INDEX UQ_experiment_actions__user_experiment
-	ON experiment_actions (user_id, experiment_id) WHERE status = 'active';
+CREATE UNIQUE INDEX UQ_experiment_actions__user_experiment_prompt
+	ON experiment_actions (user_id, experiment_prompt_id) WHERE status = 'active';
 
 --Each experiment_action has to be associated with a user
 ALTER TABLE experiment_actions
@@ -692,9 +692,9 @@ ALTER TABLE experiment_actions
 
 --Each experiment_action has to be associated with an experiment
 ALTER TABLE experiment_actions
-    ADD CONSTRAINT fk_experiment_actions__experiments
-    FOREIGN KEY(experiment_id)
-    REFERENCES experiments(id);
+    ADD CONSTRAINT fk_experiment_actions__experiment_prompts
+    FOREIGN KEY(experiment_prompt_id)
+    REFERENCES experiment_prompts(id);
 
 --Restrict values for status
 ALTER TABLE experiment_actions
@@ -790,7 +790,7 @@ EXECUTE PROCEDURE trigger_set_updated_datetime();
 /***
 TESTING
 ***/
-
+/*
 --Test email uniqueness ADD CONSTRAINT
 INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
@@ -805,10 +805,10 @@ VALUES
 --Test timezone validity ADD CONSTRAINT
 INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
-	('santa@gmail.com', 'Santa', 'Claus', 'America/New_Yorkss');
+	('santa@gmail.com', 'Santa', 'Claus', 'America/New_Yorkss');*/
 
 /*Test updated time*/
-INSERT INTO users(email, first_name, last_name, timezone) 
+/*INSERT INTO users(email, first_name, last_name, timezone) 
 VALUES
 	('santa@gmail.com', 'Santa', 'Claus', 'America/New_York'),
 	('santaclause@gmail.com', 'Santa 2', 'Claus', 'America/Chicago');
@@ -819,7 +819,7 @@ SET first_name = 'Santa 2nd'
 WHERE first_name = 'Santa 2';
 
 --Check inserts, update time
-SELECT * FROM users;
+SELECT * FROM users;*/
 
 
 
