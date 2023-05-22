@@ -346,7 +346,7 @@ ALTER TABLE sub_group_assignments
 --Restrict values for status
 ALTER TABLE sub_group_assignments
     ADD CONSTRAINT check_sub_group_assignments__status
-    CHECK (status IN ('pending', 'active', 'completed', 'canceled'));
+    CHECK (status IN ('variable_currently_unused','pending', 'active', 'completed', 'canceled'));
 
 --Automatically update updated_datetime.
 CREATE TRIGGER set_updated_datetime__sub_group_assignments
